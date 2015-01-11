@@ -1,6 +1,6 @@
 PROJECT_NAME := ble_app_hrs_c_s120_pca10028
 
-NRF_SDK_PATH := /home/jaska/Development/nrf_sdk
+NRF_SDK_PATH := /home/jaska/Development/nRF51_SDK_7.1.0
 U8G_SRC_PATH := /home/jaska/Development/u8glib/csrc
 U8G_FONT_PATH := /home/jaska/Development/u8glib/sfntsrc
 
@@ -10,7 +10,7 @@ MAKEFILE_NAME := $(MAKEFILE_LIST)
 MAKEFILE_DIR := $(dir $(MAKEFILE_NAME) ) 
 
 
-TEMPLATE_PATH = ../../../../../../components/toolchain/gcc
+TEMPLATE_PATH = $(NRF_SDK_PATH)/components/toolchain/gcc
 ifeq ($(OS),Windows_NT)
 include $(TEMPLATE_PATH)/Makefile.windows
 else
@@ -62,15 +62,15 @@ $(NRF_SDK_PATH)/components/ble/common/ble_srv_common.c \
 $(NRF_SDK_PATH)/components/ble/device_manager/device_manager_central.c \
 $(NRF_SDK_PATH)/components/ble/ble_db_discovery/ble_db_discovery.c \
 $(NRF_SDK_PATH)/examples/bsp/bsp.c \
-$(NRF_SDK_PATH)/examples/ble_central/hrm_watch/main.c \
-$(NRF_SDK_PATH)/examples/ble_central/hrm_watch/u8g_arm.c \
-$(NRF_SDK_PATH)/examples/ble_central/hrm_watch/u8g_dev_stdout.c \
+../../../main.c \
+../../../u8g_arm.c \
+../../../u8g_dev_stdout.c \
 
 # U8G Source files
 C_SOURCE_FILES += $(wildcard $(U8G_SRC_PATH)/*.c) $(wildcard $(U8G_FONT_PATH)/*.c)
 
 #assembly files common to all targets
-ASM_SOURCE_FILES  = ../../../../../../components/toolchain/gcc/gcc_startup_nrf51.s
+ASM_SOURCE_FILES  = $(NRF_SDK_PATH)/components/toolchain/gcc/gcc_startup_nrf51.s
 
 #includes common to all targets
 INC_PATHS += -I$(NRF_SDK_PATH)/components/toolchain/gcc
@@ -95,8 +95,8 @@ INC_PATHS += -I$(NRF_SDK_PATH)/components/drivers_nrf/pstorage
 INC_PATHS += -I$(NRF_SDK_PATH)/components/drivers_nrf/pstorage/config
 INC_PATHS += -I$(NRF_SDK_PATH)/components/libraries/util
 INC_PATHS += -I$(NRF_SDK_PATH)/examples/bsp
-INC_PATHS += -I$(NRF_SDK_PATH)/examples/ble_central/hrm_watch
-INC_PATHS += -I$(NRF_SDK_PATH)/examples/ble_central/hrm_watch/config
+INC_PATHS += -I../../../
+INC_PATHS += -I../../../config
 INC_PATHS += -I$(U8G_SRC_PATH)
 INC_PATHS += -I$(U8G_FONT_PATH)
 
@@ -174,7 +174,7 @@ vpath %.s $(ASM_PATHS)
 OBJECTS = $(C_OBJECTS) $(ASM_OBJECTS)
 
 nrf51422_xxac_s120: OUTPUT_FILENAME := nrf51422_xxac_s120
-nrf51422_xxac_s120: LINKER_SCRIPT=../../../../../../components/toolchain/gcc/gcc_nrf51_s120_xxac.ld
+nrf51422_xxac_s120: LINKER_SCRIPT=$(NRF_SDK_PATH)/components/toolchain/gcc/gcc_nrf51_s120_xxac.ld
 nrf51422_xxac_s120: $(BUILD_DIRECTORIES) $(OBJECTS)
 	@echo Linking target: $(OUTPUT_FILENAME).out
 	$(NO_ECHO)$(CC) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out

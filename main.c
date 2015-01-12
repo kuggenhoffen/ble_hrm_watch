@@ -21,7 +21,6 @@
 #include "ble.h"
 #include "ble_db_discovery.h"
 #include "softdevice_handler.h"
-#include "app_util.h"
 #include "app_error.h"
 #include "boards.h"
 #include "nrf_gpio.h"
@@ -44,7 +43,7 @@
 #define BOND_DELETE_ALL_BUTTON_ID  0                                  /**< Button used for deleting all bonded centrals during startup. */
 
 #define APP_TIMER_PRESCALER        0                                  /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS       (2+BSP_APP_TIMERS_NUMBER)          /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_MAX_TIMERS       (6) 			         			  /**< Maximum number of simultaneously created timers. */
 #define APP_TIMER_OP_QUEUE_SIZE    2                                  /**< Size of timer operation queues. */
 
 #define APPL_LOG                   app_trace_log                      /**< Debug logger macro that will be used in this file to do logging of debug information over UART. */
@@ -117,22 +116,6 @@ static void scan_start(void);
 
 #define APPL_LOG                        app_trace_log             /**< Debug logger macro that will be used in this file to do logging of debug information over UART. */
 
-// WARNING: The following macro MUST be un-defined (by commenting out the definition) if the user
-// does not have a nRF6350 Display unit. If this is not done, the application will not work.
-//#define APPL_LCD_PRINT_ENABLE                                     /**< In case you do not have a functional display unit, disable this flag and observe trace on UART. */
-
-#ifdef APPL_LCD_PRINT_ENABLE
-
-#define APPL_LCD_CLEAR                  nrf6350_lcd_clear         /**< Macro to clear the LCD display.*/
-#define APPL_LCD_WRITE                  nrf6350_lcd_write_string  /**< Macro to write a string to the LCD display.*/
-
-#else // APPL_LCD_PRINT_ENABLE
-
-#define APPL_LCD_WRITE(...)             true                      /**< Macro to clear the LCD display defined to do nothing when @ref APPL_LCD_PRINT_ENABLE is not defined.*/
-#define APPL_LCD_CLEAR(...)             true                      /**< Macro to write a string to the LCD display defined to do nothing when @ref APPL_LCD_PRINT_ENABLE is not defined.*/
-
-#endif // APPL_LCD_PRINT_ENABLE
-
 /**
  * HRM Watch variables
  */
@@ -149,6 +132,7 @@ void drawDisplay()
 {
   u8g_SetFont(&u8g, u8g_font_gdb14);
   u8g_DrawStr(&u8g,  0, 40, hrtext);
+  u8g_DrawStr(&u8g, 0, 60, "Jello");
 }
 
 void gfxTimerHandler(void *p_ctx)
@@ -267,10 +251,10 @@ void uart_error_handle(app_uart_evt_t * p_event)
 		APP_ERROR_HANDLER(p_event->data.error_code);
 		break;
 	case APP_UART_TX_EMPTY:
-		if (gfxState == GFX_WAITING_IDLE)
+	/*	if (gfxState == GFX_WAITING_IDLE)
 			gfxState = GFX_IDLE;
 		else if (gfxState == GFX_WAITING_NEXT)
-			gfxState = GFX_NEXT;
+			gfxState = GFX_NEXT;*/
 		break;
 	default:
 		break;
@@ -297,7 +281,6 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
     {
         case DM_EVT_CONNECTION:
         {
-        	printf("evt conn\r\n");
             APPL_LOG("[APPL]: >> DM_EVT_CONNECTION\r\n");
 #ifdef ENABLE_DEBUG_LOG_SUPPORT
             ble_gap_addr_t * peer_addr;
@@ -307,9 +290,6 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
                                 peer_addr->addr[0], peer_addr->addr[1], peer_addr->addr[2],
                                 peer_addr->addr[3], peer_addr->addr[4], peer_addr->addr[5]);
             
-            err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
-            APP_ERROR_CHECK(err_code);
-
             m_dm_device_handle = (*p_handle);
 
             // Discover peer's services. 
@@ -329,12 +309,8 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
 
         case DM_EVT_DISCONNECTION:
         {
-        	printf("evt disconn\r\n");
             APPL_LOG("[APPL]: >> DM_EVT_DISCONNECTION\r\n");
             memset(&m_ble_db_discovery, 0 , sizeof (m_ble_db_discovery));
-
-            err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-            APP_ERROR_CHECK(err_code);
 
             if (m_peer_count == MAX_PEER_COUNT)
             {
@@ -347,7 +323,6 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
 
         case DM_EVT_SECURITY_SETUP:
         {
-        	printf("evt sec setup\r\n");
             APPL_LOG("[APPL]:[0x%02X] >> DM_EVT_SECURITY_SETUP\r\n", p_handle->connection_id);
             // Slave securtiy request received from peer, if from a non bonded device, 
             // initiate security setup, else, wait for encryption to complete.
@@ -359,7 +334,6 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
 
         case DM_EVT_SECURITY_SETUP_COMPLETE:
         {
-        	printf("evt sec complete\r\n");
             APPL_LOG("[APPL]: >> DM_EVT_SECURITY_SETUP_COMPLETE\r\n");
             // Heart rate service discovered. Enable notification of Heart Rate Measurement.
             err_code = ble_hrs_c_hrm_notif_enable(&m_ble_hrs_c);
@@ -369,27 +343,23 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
         }
 
         case DM_EVT_LINK_SECURED:
-        	printf("evt link secured\r\n");
             APPL_LOG("[APPL]: >> DM_LINK_SECURED_IND\r\n");
             APPL_LOG("[APPL]: << DM_LINK_SECURED_IND\r\n");
             break;
 
         case DM_EVT_DEVICE_CONTEXT_LOADED:
-        	printf("evt context loaded\r\n");
             APPL_LOG("[APPL]: >> DM_EVT_LINK_SECURED\r\n");
             APP_ERROR_CHECK(event_result);
             APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_LOADED\r\n");
             break;
 
         case DM_EVT_DEVICE_CONTEXT_STORED:
-        	printf("evt context stored\r\n");
             APPL_LOG("[APPL]: >> DM_EVT_DEVICE_CONTEXT_STORED\r\n");
             APP_ERROR_CHECK(event_result);
             APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_STORED\r\n");
             break;
 
         case DM_EVT_DEVICE_CONTEXT_DELETED:
-        	printf("evt context deleted\r\n");
             APPL_LOG("[APPL]: >> DM_EVT_DEVICE_CONTEXT_DELETED\r\n");
             APP_ERROR_CHECK(event_result);
             APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_DELETED\r\n");
@@ -454,7 +424,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         {
             data_t adv_data;
             data_t type_data;
-            printf("Adv report\r\n");
 
             // Initialize advertisement report for parsing.
             adv_data.p_data = (uint8_t *)p_gap_evt->params.adv_report.data;
@@ -493,8 +462,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                         {
                             APPL_LOG("[APPL]: Scan stop failed, reason %d\r\n", err_code);
                         }
-                        err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-                        APP_ERROR_CHECK(err_code);
 
                         m_scan_param.selective = 0; 
 
@@ -516,7 +483,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         }
 
         case BLE_GAP_EVT_TIMEOUT:
-        	printf("gap evt timeout\r\n");
             if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
             {
                 APPL_LOG("[APPL]: Scan timed out.\r\n");
@@ -535,7 +501,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             break;
 
         case BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST:
-        	printf("gap param upd req\r\n");
             // Accepting parameters requested by peer.
             err_code = sd_ble_gap_conn_param_update(p_gap_evt->conn_handle,
                                                     &p_gap_evt->params.conn_param_update_request.conn_params);
@@ -813,7 +778,7 @@ static void scan_start(void)
     ble_gap_irk_t       * p_whitelist_irk[BLE_GAP_WHITELIST_IRK_MAX_COUNT];
     uint32_t              err_code;
     uint32_t              count;
-
+    printf("scan start");
     // Verify if there is any flash access pending, if yes delay starting scanning until 
     // it's complete.
     err_code = pstorage_access_status_get(&count);
@@ -838,6 +803,7 @@ static void scan_start(void)
     if (((whitelist.addr_count == 0) && (whitelist.irk_count == 0)) ||
          (m_scan_mode != BLE_WHITELIST_SCAN))
     {
+    	printf("no whitelist");
         // No devices in whitelist, hence non selective performed.
         m_scan_param.active       = 0;            // Active scanning set.
         m_scan_param.selective    = 0;            // Selective scanning not set.
@@ -848,6 +814,7 @@ static void scan_start(void)
     }
     else
     {
+    	printf("whitelist scan");
         // Selective scanning based on whitelist first.
         m_scan_param.active       = 0;            // Active scanning set.
         m_scan_param.selective    = 1;            // Selective scanning not set.
@@ -862,11 +829,62 @@ static void scan_start(void)
 
     err_code = sd_ble_gap_scan_start(&m_scan_param);
     APP_ERROR_CHECK(err_code);
-
-    err_code = bsp_indication_set(BSP_INDICATE_SCANNING);
-    APP_ERROR_CHECK(err_code);
 }
 
+static void bsp_event_handler(bsp_event_t bsp_event)
+{
+	;
+}
+
+static void board_init()
+{
+
+}
+app_timer_id_t testi;
+uint32_t janna = 0;
+uint8_t adcdone = 0;
+void testitimeri(void *p_ctx)
+{
+	//printf("2 sekkaa\r\n");
+	//gfxUpdateReq = 1;
+	//gfxTimerHandler(NULL);
+	/* Enable ADC*/
+	//NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
+	printf("ADC: %d\r\n", janna);
+	if (adcdone) {
+		adcdone = 0;
+		NRF_ADC->TASKS_START = 1;
+	}
+}
+
+
+void ADC_init(void)
+{
+	/* Enable interrupt on ADC sample ready event*/
+	NRF_ADC->INTENSET = ADC_INTENSET_END_Msk;
+	NVIC_EnableIRQ(ADC_IRQn);
+
+	// config ADC
+	NRF_ADC->CONFIG	= (ADC_CONFIG_EXTREFSEL_None << ADC_CONFIG_EXTREFSEL_Pos) 								/* Bits 17..16 : ADC external reference pin selection. */
+										| (ADC_CONFIG_PSEL_AnalogInput2 << ADC_CONFIG_PSEL_Pos)									/*!< Use analog input 6 as analog input (P0.05). */
+										| (ADC_CONFIG_REFSEL_VBG << ADC_CONFIG_REFSEL_Pos)											/*!< Use internal 1.2V bandgap voltage as reference for conversion. */
+										| (ADC_CONFIG_INPSEL_AnalogInputNoPrescaling << ADC_CONFIG_INPSEL_Pos) 	/*!< Analog input specified by PSEL with no prescaling used as input for the conversion. */
+										| (ADC_CONFIG_RES_10bit << ADC_CONFIG_RES_Pos);													/*!< 8bit ADC resolution. */
+
+
+	/* Enable ADC*/
+	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
+	NRF_ADC->TASKS_START = 1;
+}
+
+/* Interrupt handler for ADC data ready event. It will be executed when ADC sampling is complete */
+void ADC_IRQHandler(void)
+{
+	/* Clear dataready event */
+	NRF_ADC->EVENTS_END = 0;
+	janna = NRF_ADC->RESULT;
+	adcdone = 1;
+}
 
 int main(void)
 {
@@ -895,7 +913,8 @@ int main(void)
     app_trace_init();
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
     APP_GPIOTE_INIT(1);
-    err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),NULL);
+
+    err_code = bsp_init(BSP_INIT_BUTTONS, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),NULL);
     APP_ERROR_CHECK(err_code);
 
     printf("Heart rate collector example\r\n");
@@ -904,11 +923,18 @@ int main(void)
     db_discovery_init();
     hrs_c_init();
     bas_c_init();
-
+    ADC_init();
+    printf("Init done\r\n");
     // Init U8GLib
-    u8g_Init(&u8g, &u8g_dev_stdout);
-    //app_timer_create(&gfxUpdateTimer, APP_TIMER_MODE_REPEATED, &gfxTimerHandler);
-    app_timer_start(gfxUpdateTimer, APP_TIMER_TICKS(500, APP_TIMER_PRESCALER), NULL);
+    //u8g_Init(&u8g, &u8g_dev_stdout);
+    //u8g_InitComFn(&u8g, &u8g_dev_ssd1351_128x128_332_hw_spi, u8g_com_hw_spi_fn);
+    //u8g_SetDefaultForegroundColor(&u8g);
+    //nrf_delay_ms(125);
+    //nrf_gpio_pin_set(DISPLAY_EN);
+    app_timer_create(&testi, APP_TIMER_MODE_REPEATED, &testitimeri);
+    app_timer_start(testi, APP_TIMER_TICKS(2000, APP_TIMER_PRESCALER), NULL);
+
+    display_test();
 
     // Start scanning for peripherals and initiate connection
     // with devices that advertise Heart Rate UUID.
@@ -917,7 +943,7 @@ int main(void)
     for (;; )
     {
         power_manage();
-        gfxSerialUpdate();
+        //gfxSerialUpdate();
     }
 }
 

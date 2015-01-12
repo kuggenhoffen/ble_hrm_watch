@@ -1,4 +1,4 @@
-PROJECT_NAME := ble_app_hrs_c_s120_pca10028
+PROJECT_NAME := ble_hrm_watch
 
 NRF_SDK_PATH := /home/jaska/Development/nRF51_SDK_7.1.0
 U8G_SRC_PATH := /home/jaska/Development/u8glib/csrc
@@ -43,6 +43,7 @@ remduplicates = $(strip $(if $1,$(firstword $1) $(call remduplicates,$(filter-ou
 #source common to all targets
 C_SOURCE_FILES += \
 $(NRF_SDK_PATH)/components/libraries/button/app_button.c \
+./boards/bsp.c \
 $(NRF_SDK_PATH)/components/libraries/util/app_error.c \
 $(NRF_SDK_PATH)/components/libraries/gpiote/app_gpiote.c \
 $(NRF_SDK_PATH)/components/libraries/timer/app_timer.c \
@@ -61,10 +62,10 @@ $(NRF_SDK_PATH)/components/ble/ble_services/ble_bas_c/ble_bas_c.c \
 $(NRF_SDK_PATH)/components/ble/common/ble_srv_common.c \
 $(NRF_SDK_PATH)/components/ble/device_manager/device_manager_central.c \
 $(NRF_SDK_PATH)/components/ble/ble_db_discovery/ble_db_discovery.c \
-$(NRF_SDK_PATH)/examples/bsp/bsp.c \
-../../../main.c \
-../../../u8g_arm.c \
-../../../u8g_dev_stdout.c \
+$(NRF_SDK_PATH)/components/drivers_nrf/spi_master/spi_master.c \
+./main.c \
+./u8g_arm.c \
+./u8g_dev_stdout.c \
 
 # U8G Source files
 C_SOURCE_FILES += $(wildcard $(U8G_SRC_PATH)/*.c) $(wildcard $(U8G_FONT_PATH)/*.c)
@@ -94,9 +95,11 @@ INC_PATHS += -I$(NRF_SDK_PATH)/components/libraries/scheduler
 INC_PATHS += -I$(NRF_SDK_PATH)/components/drivers_nrf/pstorage
 INC_PATHS += -I$(NRF_SDK_PATH)/components/drivers_nrf/pstorage/config
 INC_PATHS += -I$(NRF_SDK_PATH)/components/libraries/util
+INC_PATHS += -I$(NRF_SDK_PATH)/components/drivers_nrf/spi_master
+INC_PATHS += -I./
+INC_PATHS += -I./config
+INC_PATHS += -I./boards
 INC_PATHS += -I$(NRF_SDK_PATH)/examples/bsp
-INC_PATHS += -I../../../
-INC_PATHS += -I../../../config
 INC_PATHS += -I$(U8G_SRC_PATH)
 INC_PATHS += -I$(U8G_FONT_PATH)
 
@@ -115,7 +118,8 @@ CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DS120
 CFLAGS += -DSOFTDEVICE_PRESENT
 #CFLAGS += -DENABLE_DEBUG_LOG_SUPPORT
-CFLAGS += -DBOARD_PCA10028
+CFLAGS += -DBOARD_CUSTOM
+CFLAGS += -DSPI_MASTER_0_ENABLE
 CFLAGS += -mcpu=cortex-m0
 CFLAGS += -mthumb -mabi=aapcs --std=gnu99
 CFLAGS += -Wall -O1
@@ -145,7 +149,8 @@ ASMFLAGS += -DBSP_UART_SUPPORT
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
 ASMFLAGS += -DS120
 ASMFLAGS += -DSOFTDEVICE_PRESENT
-ASMFLAGS += -DBOARD_PCA10028
+ASMFLAGS += -DBOARD_CUSTOM
+ASMFLAGS += -DSPI_MASTER_0_ENABLE
 #default target - first one defined
 default: clean nrf51422_xxac_s120
 

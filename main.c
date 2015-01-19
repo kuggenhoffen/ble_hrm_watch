@@ -119,22 +119,14 @@ static void scan_start(void);
 /**
  * HRM Watch variables
  */
-// Graphics driver instance
-u8g_t u8g;
+
 // Graphics update timer
 app_timer_id_t gfxUpdateTimer;
 uint8_t	gfxUpdateReq = 0;
 uint8_t lastHeartRate = 0;
 uint8_t nextpage = 0;
 uint8_t hrtext[4];
-
-void drawDisplay()
-{
-  u8g_SetFont(&u8g, u8g_font_gdb14);
-  u8g_DrawStr(&u8g,  0, 40, hrtext);
-  u8g_DrawStr(&u8g, 0, 60, "Jello");
-}
-
+/*
 void gfxTimerHandler(void *p_ctx)
 {
 	// Check if we need to update display
@@ -149,7 +141,7 @@ void gfxTimerHandler(void *p_ctx)
 	u8g_FirstPage(&u8g);
 	do
 	{
-		drawDisplay();
+	//	drawDisplay();
 	} while( u8g_NextPage(&u8g) );
 }
 
@@ -221,7 +213,7 @@ void updateDisplayValues()
 		hrtext[1] = (disphr%100)/10 + '0';
 		hrtext[2] = disphr%10 + '0';
 	}
-}
+}*/
 
 /**@brief Function for asserts in the SoftDevice.
  *
@@ -432,6 +424,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             err_code = adv_report_parse(BLE_GAP_AD_TYPE_16BIT_SERVICE_UUID_MORE_AVAILABLE,
                                         &adv_data,
                                         &type_data);
+        	// Reset
 
             if (err_code != NRF_SUCCESS)
             {
@@ -496,6 +489,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             }
             else if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN)
             {
+            	// Reset
                 APPL_LOG("[APPL]: Connection Request timed out.\r\n");
             }
             break;
@@ -843,6 +837,8 @@ static void board_init()
 app_timer_id_t testi;
 uint32_t janna = 0;
 uint8_t adcdone = 0;
+volatile uint16_t timer = 0;
+volatile uint8_t updatedisplay = 0;
 void testitimeri(void *p_ctx)
 {
 	//printf("2 sekkaa\r\n");
@@ -855,6 +851,9 @@ void testitimeri(void *p_ctx)
 		adcdone = 0;
 		NRF_ADC->TASKS_START = 1;
 	}
+	timer += 2;
+	updatedisplay = 1;
+    printf("DD\r\n");
 }
 
 
@@ -897,12 +896,12 @@ int main(void)
            TX_PIN_NUMBER,
            RTS_PIN_NUMBER,
            CTS_PIN_NUMBER,
-           APP_UART_FLOW_CONTROL_ENABLED,
+           APP_UART_FLOW_CONTROL_DISABLED,
            false,
            UART_BAUDRATE_BAUDRATE_Baud460800
        };
 
-    APP_UART_FIFO_INIT(&comm_params,
+    /*APP_UART_FIFO_INIT(&comm_params,
                           UART_RX_BUF_SIZE,
                           UART_TX_BUF_SIZE,
                           uart_error_handle,
@@ -910,7 +909,7 @@ int main(void)
                           err_code);
 
     APP_ERROR_CHECK(err_code);
-    app_trace_init();
+    app_trace_init();*/
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
     APP_GPIOTE_INIT(1);
 
@@ -927,23 +926,29 @@ int main(void)
     printf("Init done\r\n");
     // Init U8GLib
     //u8g_Init(&u8g, &u8g_dev_stdout);
-    //u8g_InitComFn(&u8g, &u8g_dev_ssd1351_128x128_332_hw_spi, u8g_com_hw_spi_fn);
+    u8g_InitComFn(&u8g, &u8g_dev_ssd1351_128x128gh_332_hw_spi, u8g_com_hw_spi_fn);
+    display_init();
     //u8g_SetDefaultForegroundColor(&u8g);
     //nrf_delay_ms(125);
     //nrf_gpio_pin_set(DISPLAY_EN);
     app_timer_create(&testi, APP_TIMER_MODE_REPEATED, &testitimeri);
     app_timer_start(testi, APP_TIMER_TICKS(2000, APP_TIMER_PRESCALER), NULL);
 
-    display_test();
 
+    display_test();
     // Start scanning for peripherals and initiate connection
     // with devices that advertise Heart Rate UUID.
     scan_start();
 
     for (;; )
     {
-        power_manage();
+        //power_manage();
         //gfxSerialUpdate();
+        if (updatedisplay) {
+        	update_values(lastHeartRate, timer);
+			display_test();
+			updatedisplay = 0;
+        }
     }
 }
 

@@ -56,19 +56,80 @@
 #include "u8g_arm.h"
 #include "nrf_delay.h"
 #include "custom_board.h"
-#include "spi_master.h"
+//#include "spi_master.h"
 #include "app_error.h"
 #include "app_util.h"
 #include "nordic_common.h"
 #include "app_util_platform.h"
 #include "nrf_gpio.h"
 #include "app_trace.h"
+#include "bluetooth_icon.h"
+#include "battery_empty_icon.h"
+#include "cog_icon.h"
+#include "power_standby_icon.h"
+#include "heart_icon.h"
+#include "signal_icon.h"
+#include "timer_icon.h"
+#include "wrench_icon.h"
+
+#define DRAW_ICON(X, Y, NAME) \
+	u8g_DrawXBM(&u8g, X, Y, NAME##_width, NAME##_height, NAME##_bits)
 
 #define TX_RX_MSG_LENGTH	10
+
+#define SPI_STATE_IDLE		0
+#define SPI_STATE_WAITING	1
 
 static uint8_t tx_data_spi[TX_RX_MSG_LENGTH];
 static uint8_t rx_data_spi[TX_RX_MSG_LENGTH];
 
+static volatile uint8_t spi_state = SPI_STATE_IDLE;
+
+// Display string variables
+uint8_t hrstr[4];
+uint8_t timerstr[9];
+uint8_t timerbig = 0;
+
+inline uint8_t getHours(uint16_t seconds)
+{
+	if (seconds < 3600)
+		return 0;
+
+	return seconds / 3600;
+}
+
+inline uint8_t getMinutes(uint16_t seconds)
+{
+	if (seconds < 60)
+		return 0;
+
+	return (seconds % 3600) / 60;
+}
+
+inline uint8_t getSeconds(uint16_t seconds)
+{
+	return seconds % 60;
+}
+
+void update_values(uint8_t newhr, uint16_t newtimer)
+{
+	sprintf(hrstr, "%3u", newhr);
+	if (getHours(newtimer) > 0) {
+		sprintf(timerstr, "%02u:%02u:%02u", getHours(newtimer), getMinutes(newtimer), getSeconds(newtimer));
+		timerbig = 1;
+	}
+	else {
+		sprintf(timerstr, "%02u:%02u", getMinutes(newtimer), getSeconds(newtimer));
+		timerbig = 0;
+	}
+
+}
+/*
+void spi_master_init();
+uint8_t spi_master_exchange_byte(uint8_t txbyte);
+void spi_master_end_transaction();
+void spi_master_start_transaction();
+*/
 /*========================================================================*/
 /*
   The following delay procedures must be implemented for u8glib
@@ -110,14 +171,23 @@ void spi_event_handler(spi_master_evt_t spi_master_evt)
             break;
     }
 }
-
+/*
+void SPI0_TWI0_IRQHandler(void)
+{
+    if ((NRF_SPI0->EVENTS_READY == 1) && (NRF_SPI0->INTENSET & SPI_INTENSET_READY_Msk))
+    {
+        NRF_SPI0->EVENTS_READY = 0;
+        spi_state = SPI_STATE_IDLE;
+    }
+}
+*/
 static void spi_init(spi_master_event_handler_t spi_master_event_handler)
 {
     uint32_t err_code = NRF_SUCCESS;
 
     // Configure SPI master.
     spi_master_config_t spi_config = {                                                                           \
-							(0x80000000UL), /**< Serial clock frequency 1 Mbps. */      \
+							SPI_FREQUENCY_FREQUENCY_M4, /**< Serial clock frequency 1 Mbps. */      \
 							0xFFFFFFFF,       /**< SCK pin DISCONNECTED. */               \
 							0xFFFFFFFF,       /**< MISO pin DISCONNECTED. */              \
 							0xFFFFFFFF,       /**< MOSI pin DISCONNECTED. */              \
@@ -134,7 +204,7 @@ static void spi_init(spi_master_event_handler_t spi_master_event_handler)
 	spi_config.SPI_Pin_MOSI = SPI_MOSI_PIN;
 	spi_config.SPI_Pin_SS   = SPI_CS_DISPLAY;
 
-    spi_config.SPI_CONFIG_ORDER = SPI_CONFIG_ORDER_LsbFirst;
+    spi_config.SPI_CONFIG_ORDER = SPI_CONFIG_ORDER_MsbFirst;
 
     err_code = spi_master_open(SPI_MASTER_0, &spi_config);
     APP_ERROR_CHECK(err_code);
@@ -169,31 +239,118 @@ void send_cmd(uint8_t byte)
 {
 	// Pull DC low
 	nrf_gpio_pin_clear(DISPLAY_DC);
-	spi_out(byte);
-
-	nrf_delay_us(1);
+	spi_master_exchange_byte(byte);
 }
 
 void send_data(uint8_t byte)
 {
 	// Pull DC high
 	nrf_gpio_pin_set(DISPLAY_DC);
-	spi_out(byte);
-	nrf_delay_us(1);
+	spi_master_exchange_byte(byte);
 }
 
 void enable_display_vdd()
 {
-	nrf_gpio_pin_clear(DISPLAY_EN);
-	nrf_delay_ms(100);
+	nrf_gpio_pin_set(DISPLAY_EN);
+	nrf_delay_ms(150);
 }
 
 void disable_display_vdd()
 {
-	nrf_gpio_pin_set(DISPLAY_EN);
+	nrf_gpio_pin_clear(DISPLAY_EN);
 	nrf_delay_ms(100);
 }
+/*
+void spi_master_init()
+{
+	//spi_master_init_hw_instance(NRF_SPI0, SPI0_TWI0_IRQn, p_spi_instance, p_spi_master_config->SPI_DisableAllIRQ);
 
+	//A Slave select must be set as high before setting it as output,
+	//because during connect it to the pin it causes glitches.
+	nrf_gpio_pin_set(SPI_CS_DISPLAY);
+	nrf_gpio_cfg_output(SPI_CS_DISPLAY);
+	nrf_gpio_pin_set(SPI_CS_DISPLAY);
+
+	//Configure GPIO
+	nrf_gpio_cfg_output(SPI_SCK_PIN);
+	nrf_gpio_pin_set(SPI_SCK_PIN);
+	nrf_gpio_cfg_output(SPI_MOSI_PIN);
+	nrf_gpio_pin_clear(SPI_MOSI_PIN);
+	nrf_gpio_cfg_input(SPI_MISO_PIN, NRF_GPIO_PIN_NOPULL);
+
+	// Configure SPI hardware
+	NRF_SPI0->PSELSCK  = SPI_SCK_PIN;
+	NRF_SPI0->PSELMOSI = SPI_MOSI_PIN;
+	NRF_SPI0->PSELMISO = SPI_MISO_PIN;
+
+	NRF_SPI0->FREQUENCY = SPI_FREQUENCY_FREQUENCY_M1;
+
+	NRF_SPI0->CONFIG =
+		(uint32_t)(SPI_CPHA << SPI_CONFIG_CPHA_Pos) |
+		(SPI_CPOL << SPI_CONFIG_CPOL_Pos) |
+		(SPI_ORDER << SPI_CONFIG_ORDER_Pos);
+
+	// Clear waiting interrupts and events
+	NRF_SPI0->EVENTS_READY = 0;
+
+	APP_ERROR_CHECK(sd_nvic_ClearPendingIRQ(SPI0_TWI0_IRQn));
+	APP_ERROR_CHECK(sd_nvic_SetPriority(SPI0_TWI0_IRQn, APP_IRQ_PRIORITY_LOW));
+}
+
+void spi_master_start_transaction()
+{
+	// Clear pending interrupts and events
+	NRF_SPI0->EVENTS_READY = 0;
+	APP_ERROR_CHECK(sd_nvic_ClearPendingIRQ(SPI0_TWI0_IRQn));
+	APP_ERROR_CHECK(sd_nvic_SetPriority(SPI0_TWI0_IRQn, APP_IRQ_PRIORITY_LOW));
+
+	// Enable interrupt
+	NRF_SPI0->INTENSET = (SPI_INTENSET_READY_Set << SPI_INTENCLR_READY_Pos);
+	APP_ERROR_CHECK(sd_nvic_EnableIRQ(SPI0_TWI0_IRQn));
+
+	// Enable SPI hardware
+	NRF_SPI0->ENABLE = (SPI_ENABLE_ENABLE_Enabled << SPI_ENABLE_ENABLE_Pos);
+
+	// Clear chipselect pin
+	nrf_gpio_pin_clear(SPI_CS_DISPLAY);
+}
+
+void spi_master_end_transaction()
+{
+	// Set chipselect pin
+	nrf_gpio_pin_set(SPI_CS_DISPLAY);
+
+	APP_ERROR_CHECK(sd_nvic_DisableIRQ(SPI0_TWI0_IRQn));
+
+	// Enable SPI hardware
+	NRF_SPI0->ENABLE = (SPI_ENABLE_ENABLE_Disabled << SPI_ENABLE_ENABLE_Pos);
+}
+
+uint8_t spi_master_exchange_byte(uint8_t txbyte)
+{
+	uint8_t rxbyte = 0;
+
+	//Disable interrupt SPI.
+	APP_ERROR_CHECK(sd_nvic_DisableIRQ(SPI0_TWI0_IRQn));
+
+	// Write byte to transmit register
+	NRF_SPI0->TXD = (uint32_t) txbyte;
+	spi_state = SPI_STATE_WAITING;
+
+	// Wait until exchange is finished
+	while (spi_state == SPI_STATE_WAITING) { ; }
+
+	//NRF_SPI0->EVENTS_READY = 0;
+
+	// Read byte from receive register
+	rxbyte = (uint8_t)NRF_SPI0->RXD;
+
+	//Enable SPI interrupt.
+	APP_ERROR_CHECK(sd_nvic_EnableIRQ(SPI0_TWI0_IRQn));
+
+	return rxbyte;
+}
+*/
 void fillRect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint16_t fillcolor)
 {
 
@@ -236,8 +393,48 @@ void fillRect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint16_t fillcolor)
 	}
 }
 
+void draw_display()
+{
+	u8g_SetColorIndex(&u8g, 1);
+	u8g_SetFont(&u8g, u8g_font_gdb20n);
+	u8g_DrawStr(&u8g,  50, 76, hrstr);
+	DRAW_ICON(30, 58, heart_icon);
+
+	u8g_SetFont(&u8g, u8g_font_gdb12n);
+	u8g_DrawStr(&u8g,  50, 92, hrstr);
+	DRAW_ICON(30, 78, battery_empty_icon);
+	u8g_DrawStr(&u8g,  50, 112, hrstr);
+	DRAW_ICON(30, 98, signal_icon);
+
+	//u8g_DrawFrame(&u8g, 24, 54, 80, 62);
+	// Horizontals
+	u8g_DrawLine(&u8g, 0, 54, 128, 54);
+	u8g_DrawLine(&u8g, 0, 91, 24, 91);
+	u8g_DrawLine(&u8g, 104, 91, 128, 91);
+	u8g_DrawLine(&u8g, 24, 54, 24, 128);
+	u8g_DrawLine(&u8g, 104, 54, 104, 128);
+
+	if (timerbig)
+		u8g_DrawStr(&u8g, 30, 52, timerstr);
+	else
+		u8g_DrawStr(&u8g, 40, 52, timerstr);
+
+	DRAW_ICON(111, 1, bluetooth_icon);
+	DRAW_ICON(4, 1, battery_empty_icon);
+	DRAW_ICON(108, 64, wrench_icon);
+	DRAW_ICON(4, 64, power_standby_icon);
+	DRAW_ICON(4, 101, timer_icon);
+}
+
 void display_test()
 {
+	//enable_display_vdd();
+	u8g_FirstPage(&u8g);
+	do
+	{
+		draw_display();
+	} while( u8g_NextPage(&u8g) );
+/*	uint8_t byte = 0;
 	// Reset
 	printf("Display reset");
 	nrf_gpio_pin_set(DISPLAY_RESET);
@@ -246,8 +443,15 @@ void display_test()
 	nrf_delay_us(10);
 	nrf_gpio_pin_set(DISPLAY_RESET);
 	// Initialize SPI
-	spi_init(spi_event_handler);
-
+	spi_master_init();
+	spi_master_start_transaction();
+	while (1) {
+		send_cmd(CMD_WRITE_RAM_COMMAND);
+		send_data(byte);
+		byte++;
+		//nrf_delay_us(10);
+		//nrf_delay_ms(500);
+	}
 	send_cmd(CMD_COMMAND_LOCK);
 	send_data(0x12);
 	send_cmd(CMD_COMMAND_LOCK);
@@ -319,9 +523,19 @@ void display_test()
 	// Set sleep mode on
 	send_cmd(CMD_SET_SLEEP_MODE_ON);
 	// Disable VDD
-	disable_display_vdd();
+	disable_display_vdd();*/
 }
 
+void display_init()
+{
+	printf("DISP INIT\r\n");
+	nrf_gpio_cfg_output(DISPLAY_RESET);
+	nrf_gpio_pin_set(DISPLAY_RESET);
+	nrf_gpio_cfg_output(DISPLAY_DC);
+	nrf_gpio_cfg_output(DISPLAY_EN);
+	//u8g_Begin(&u8g);
+	enable_display_vdd();
+}
 
 /*========================================================================*/
 /* u8glib com procedure */
@@ -354,13 +568,14 @@ uint8_t u8g_com_hw_spi_fn(u8g_t *u8g, uint8_t msg, uint8_t arg_val, void *arg_pt
       break;
     
     case U8G_COM_MSG_INIT:
-    	printf("U8G init %d\r\n", arg_val);
+    	printf("ini\r\n");
     	spi_init(spi_event_handler);
+    	u8g_SetDefaultBackgroundColor(u8g);
     	u8g_MicroDelay();
       break;
     
     case U8G_COM_MSG_ADDRESS:
-    	printf("U8G address\r\n");
+    	//printf("ad\r\n");
     	if (arg_val)
     		nrf_gpio_pin_set(DISPLAY_DC);
     	else
@@ -368,7 +583,7 @@ uint8_t u8g_com_hw_spi_fn(u8g_t *u8g, uint8_t msg, uint8_t arg_val, void *arg_pt
      break;
 
     case U8G_COM_MSG_CHIP_SELECT:
-    	printf("U8G cs\r\n");
+    	//printf("cs\r\n");
     	if (arg_val) {
     		// Enable
     		nrf_gpio_pin_clear(SPI_CS_DISPLAY);
@@ -381,25 +596,27 @@ uint8_t u8g_com_hw_spi_fn(u8g_t *u8g, uint8_t msg, uint8_t arg_val, void *arg_pt
       break;
       
     case U8G_COM_MSG_RESET:
-    	printf("U8G reset\r\n");
+    	printf("res %d\r\n", arg_val);
     	if (arg_val)
-    		nrf_gpio_pin_clear(DISPLAY_RESET);
-    	else
     		nrf_gpio_pin_set(DISPLAY_RESET);
+    	else
+    		nrf_gpio_pin_clear(DISPLAY_RESET);
     	u8g_MicroDelay();
       break;
       
     case U8G_COM_MSG_WRITE_BYTE:
-    	spi_out(arg_val);
+    	tx_data_spi[0] = arg_val;
+    	spi_master_send_recv(SPI_MASTER_0, tx_data_spi, 1, rx_data_spi, 0);
       break;
     
     case U8G_COM_MSG_WRITE_SEQ:
     case U8G_COM_MSG_WRITE_SEQ_P:
-        while( arg_val > 0 )
+    	spi_master_send_recv(SPI_MASTER_0, ptr, arg_val, rx_data_spi, 0);
+        /*while( arg_val > 0 )
         {
           spi_out(*ptr++);
           arg_val--;
-        }
+        }*/
       break;
   }
   return 1;

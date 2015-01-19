@@ -56,16 +56,6 @@ inline uint8_t getSeconds(uint16_t seconds)
 	return seconds % 60;
 }
 
-uint8_t uint8_to_str(uint8_t value, uint8_t* dest, uint8_t maxlen)
-{
-	if (!dest)
-		return -1;
-
-	if (maxlen <= 0)
-		return 0;
-
-}
-
 void update_values()
 {
 	sprintf(hrstr, "%3u", heartrate);

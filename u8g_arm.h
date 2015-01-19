@@ -77,6 +77,9 @@ extern uint16_t u8g_pin_cs;
 extern uint16_t u8g_pin_rst;
 uint8_t u8g_com_hw_spi_fn(u8g_t *u8g, uint8_t msg, uint8_t arg_val, void *arg_ptr);
 void display_test();
+void update_values(uint8_t newhr, uint16_t newtimer);
+// Graphics driver instance
+u8g_t u8g;
 
 #endif
 

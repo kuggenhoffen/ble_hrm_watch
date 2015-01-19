@@ -1,7 +1,7 @@
 PROJECT_NAME := ble_hrm_watch
 
 NRF_SDK_PATH := /home/jaska/Development/nRF51_SDK_7.1.0
-U8G_SRC_PATH := /home/jaska/Development/u8glib/csrc
+U8G_SRC_PATH := /home/jaska/Development/u8glib_arm/src
 U8G_FONT_PATH := /home/jaska/Development/u8glib/sfntsrc
 
 export OUTPUT_FILENAME
@@ -68,7 +68,46 @@ $(NRF_SDK_PATH)/components/drivers_nrf/spi_master/spi_master.c \
 ./u8g_dev_stdout.c \
 
 # U8G Source files
-C_SOURCE_FILES += $(wildcard $(U8G_SRC_PATH)/*.c) $(wildcard $(U8G_FONT_PATH)/*.c)
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_bitmap.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_circle.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_clip.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_com_api_16gr.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_com_api.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_com_io.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_com_null.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_cursor.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_delay.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_dev_ssd1351_128x128.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_ellipse.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_font.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_line.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_ll_api.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_page.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb14v1.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb16h1.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb16h2.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb16v1.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb16v2.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb32h1.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8h1.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8h1f.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8h2.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8h8.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8v1.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8v2.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pbxh16.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pbxh24.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_polygon.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_rect.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_rot.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_scale.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_state.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_u16toa.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_u8toa.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_virtual_screen.c
+C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_font_data.c
+#C_SOURCE_FILES += $(U8G_FONT_PATH)/u8g_font_data.c
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(NRF_SDK_PATH)/components/toolchain/gcc/gcc_startup_nrf51.s
@@ -102,6 +141,7 @@ INC_PATHS += -I./boards
 INC_PATHS += -I$(NRF_SDK_PATH)/examples/bsp
 INC_PATHS += -I$(U8G_SRC_PATH)
 INC_PATHS += -I$(U8G_FONT_PATH)
+INC_PATHS += -I./icons
 
 OBJECT_DIRECTORY = _build
 LISTING_DIRECTORY = $(OBJECT_DIRECTORY)
@@ -111,7 +151,7 @@ OUTPUT_BINARY_DIRECTORY = $(OBJECT_DIRECTORY)
 BUILD_DIRECTORIES := $(sort $(OBJECT_DIRECTORY) $(OUTPUT_BINARY_DIRECTORY) $(LISTING_DIRECTORY) )
 
 #flags common to all targets
-CFLAGS  = -D__HEAP_SIZE=0
+CFLAGS  = -D__HEAP_SIZE=128
 CFLAGS += -DNRF51
 CFLAGS += -DBSP_UART_SUPPORT
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
@@ -143,7 +183,7 @@ LDFLAGS += --specs=nano.specs -lc -lnosys
 
 # Assembler flags
 ASMFLAGS += -x assembler-with-cpp
-ASMFLAGS += -D__HEAP_SIZE=0
+ASMFLAGS += -D__HEAP_SIZE=128
 ASMFLAGS += -DNRF51
 ASMFLAGS += -DBSP_UART_SUPPORT
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD

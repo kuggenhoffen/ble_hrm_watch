@@ -53,14 +53,18 @@
 #define SPI_MOSI_PIN      2     /**< SPI Master Out Slave In GPIO pin number. */
 #define SPI_MISO_PIN      25     /**< SPI Master In Slave Out GPIO pin number. */
 // Display signals
-#define SPI_CS_DISPLAY	6             /**< SPI Slave Select GPIO pin number. */
-#define DISPLAY_RESET	4
+#define SPI_CS_DISPLAY	4             /**< SPI Slave Select GPIO pin number. */
+#define DISPLAY_RESET	6
 #define	DISPLAY_DC		5
 #define DISPLAY_EN		7
 // Flash memory signals
 #define SPI_CS_MEMORY	29
 #define	MEM_HOLD		28
 #define MEM_WP			24
+
+#define SPI_CPHA 	(1)
+#define SPI_CPOL	(1)
+#define SPI_ORDER	SPI_CONFIG_ORDER_MsbFirst
 
 #define VBAT_SEN
 

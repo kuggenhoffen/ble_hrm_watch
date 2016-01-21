@@ -477,14 +477,6 @@ uint32_t bsp_init(uint32_t type, uint32_t ticks_per_100ms, bsp_event_callback_t 
 	nrf_gpio_cfg_output(MEM_WP);
 	nrf_gpio_pin_set(MEM_WP);
 
-#if LEDS_NUMBER > 0 && !(defined BSP_SIMPLE)
-    m_app_ticks_per_100ms = ticks_per_100ms;
-    m_indication_type     = type;
-#else
-    UNUSED_VARIABLE(ticks_per_100ms);
-#endif // LEDS_NUMBER > 0 && !(defined BSP_SIMPLE)
-
-#if (BUTTONS_NUMBER > 0) && !(defined BSP_SIMPLE)
     m_registered_callback = callback;
 
     // BSP will support buttons and generate events
@@ -504,42 +496,6 @@ uint32_t bsp_init(uint32_t type, uint32_t ticks_per_100ms, bsp_event_callback_t 
             err_code = app_button_enable();
         }
     }
-#elif (BUTTONS_NUMBER > 0) && (defined BSP_SIMPLE)
-
-    if (type & BSP_INIT_BUTTONS)
-    {
-        uint32_t cnt;
-        uint32_t buttons[] = BUTTONS_LIST;
-
-        for (cnt = 0; cnt < BUTTONS_NUMBER; cnt++)
-        {
-            nrf_gpio_cfg_input(buttons[cnt], BUTTON_PULL);
-        }
-    }
-#endif // (BUTTONS_NUMBER > 0) && !(defined BSP_SIMPLE)
-
-#if LEDS_NUMBER > 0 && !(defined BSP_SIMPLE)
-
-    if (type & BSP_INIT_LED)
-    {
-        NRF_GPIO->DIRCLR = BUTTONS_MASK;
-        LEDS_OFF(LEDS_MASK);
-        NRF_GPIO->DIRSET = LEDS_MASK;
-    }
-
-    // timers module must be already initialized!
-    if (err_code == NRF_SUCCESS)
-    {
-        err_code =
-            app_timer_create(&m_leds_timer_id, APP_TIMER_MODE_SINGLE_SHOT, leds_timer_handler);
-    }
-
-    if (err_code == NRF_SUCCESS)
-    {
-        err_code =
-            app_timer_create(&m_alert_timer_id, APP_TIMER_MODE_REPEATED, alert_timer_handler);
-    }
-#endif // LEDS_NUMBER > 0 && !(defined BSP_SIMPLE)
 
     return err_code;
 }

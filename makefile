@@ -1,6 +1,6 @@
 PROJECT_NAME := ble_hrm_watch
 
-NRF_SDK_PATH := /home/jaska/Development/nRF51_SDK_7.1.0
+NRF_SDK_PATH := /home/jaska/Development/nRF51_SDK_7.2.0
 U8G_SRC_PATH := /home/jaska/Development/u8glib_arm/src
 U8G_FONT_PATH := /home/jaska/Development/u8glib/sfntsrc
 
@@ -64,8 +64,21 @@ $(NRF_SDK_PATH)/components/ble/device_manager/device_manager_central.c \
 $(NRF_SDK_PATH)/components/ble/ble_db_discovery/ble_db_discovery.c \
 $(NRF_SDK_PATH)/components/drivers_nrf/spi_master/spi_master.c \
 ./main.c \
-./u8g_arm.c \
-./u8g_dev_stdout.c \
+./hrm_app.c \
+./components/u8g_arm.c \
+./components/display.c \
+./components/datetime.c \
+./components/batterymonitor.c \
+./components/spi_fast.c \
+./components/flash.c \
+./components/fs/fs.c \
+./components/uart_protocol.c \
+./components/gui/gui_common.c \
+./components/gui/gui_main.c \
+./components/gui/gui_settings.c \
+../Afproto/C/afproto.c \
+../Afproto/C/crc16.c \
+./components/u8g_dev_ssd1351_128x128.c
 
 # U8G Source files
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_bitmap.c
@@ -77,8 +90,6 @@ C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_com_io.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_com_null.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_cursor.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_delay.c
-C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_dev_ssd1351_128x128.c
-C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_ellipse.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_font.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_line.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_ll_api.c
@@ -98,28 +109,24 @@ C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb8v2.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pb.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pbxh16.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_pbxh24.c
-C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_polygon.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_rect.c
-C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_rot.c
-C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_scale.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_state.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_u16toa.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_u8toa.c
-C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_virtual_screen.c
 C_SOURCE_FILES += $(U8G_SRC_PATH)/u8g_font_data.c
-#C_SOURCE_FILES += $(U8G_FONT_PATH)/u8g_font_data.c
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(NRF_SDK_PATH)/components/toolchain/gcc/gcc_startup_nrf51.s
 
 #includes common to all targets
+INC_PATHS += -I$(NRF_SDK_PATH)/s120_nrf51_2.0.0/s120_nrf51_2.0.0_api/include
 INC_PATHS += -I$(NRF_SDK_PATH)/components/toolchain/gcc
 INC_PATHS += -I$(NRF_SDK_PATH)/components/toolchain
 INC_PATHS += -I$(NRF_SDK_PATH)/components/libraries/button
 INC_PATHS += -I$(NRF_SDK_PATH)/components/ble/ble_services/ble_hrs_c
 INC_PATHS += -I$(NRF_SDK_PATH)/components/ble/ble_services/ble_bas_c
 INC_PATHS += -I$(NRF_SDK_PATH)/components/ble/common
-INC_PATHS += -I$(NRF_SDK_PATH)/components/softdevice/s120/headers
+#INC_PATHS += -I$(NRF_SDK_PATH)/components/softdevice/s120/headers
 INC_PATHS += -I$(NRF_SDK_PATH)/components/libraries/gpiote
 INC_PATHS += -I$(NRF_SDK_PATH)/components/libraries/timer
 INC_PATHS += -I$(NRF_SDK_PATH)/components/drivers_nrf/hal
@@ -142,6 +149,12 @@ INC_PATHS += -I$(NRF_SDK_PATH)/examples/bsp
 INC_PATHS += -I$(U8G_SRC_PATH)
 INC_PATHS += -I$(U8G_FONT_PATH)
 INC_PATHS += -I./icons
+INC_PATHS += -I./components
+INC_PATHS += -I./components/fs
+INC_PATHS += -I./components/gui
+INC_PATHS += -I../Afproto/C
+
+NOW=$(shell date +"%s")
 
 OBJECT_DIRECTORY = _build
 LISTING_DIRECTORY = $(OBJECT_DIRECTORY)
@@ -151,12 +164,14 @@ OUTPUT_BINARY_DIRECTORY = $(OBJECT_DIRECTORY)
 BUILD_DIRECTORIES := $(sort $(OBJECT_DIRECTORY) $(OUTPUT_BINARY_DIRECTORY) $(LISTING_DIRECTORY) )
 
 #flags common to all targets
-CFLAGS  = -D__HEAP_SIZE=128
+CFLAGS  = -D__HEAP_SIZE=1024
 CFLAGS += -DNRF51
+CFLAGS += -DDEBUG
 CFLAGS += -DBSP_UART_SUPPORT
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DS120
 CFLAGS += -DSOFTDEVICE_PRESENT
+CFLAGS += -DBUILD_TIME=$(NOW)
 #CFLAGS += -DENABLE_DEBUG_LOG_SUPPORT
 CFLAGS += -DBOARD_CUSTOM
 CFLAGS += -DSPI_MASTER_0_ENABLE
@@ -167,13 +182,13 @@ CFLAGS += -ggdb
 CFLAGS += -mfloat-abi=soft
 # keep every function in separate section. This will allow linker to dump unused functions
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
-CFLAGS += -flto -fno-builtin
+CFLAGS += -flto -fno-builtin -fdiagnostics-color
 
 CFLAGS += $(CFL)
 
 # keep every function in separate section. This will allow linker to dump unused functions
 LDFLAGS += -Xlinker -Map=$(LISTING_DIRECTORY)/$(OUTPUT_FILENAME).map
-LDFLAGS += -mthumb -mabi=aapcs -L $(TEMPLATE_PATH) -T$(LINKER_SCRIPT)
+LDFLAGS += -mthumb -mabi=aapcs -L $(TEMPLATE_PATH) -T $(LINKER_SCRIPT)
 LDFLAGS += -mcpu=cortex-m0
 # let linker to dump unused sections
 LDFLAGS += -Wl,--gc-sections
@@ -183,7 +198,7 @@ LDFLAGS += --specs=nano.specs -lc -lnosys
 
 # Assembler flags
 ASMFLAGS += -x assembler-with-cpp
-ASMFLAGS += -D__HEAP_SIZE=128
+ASMFLAGS += -D__HEAP_SIZE=1024
 ASMFLAGS += -DNRF51
 ASMFLAGS += -DBSP_UART_SUPPORT
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
@@ -191,6 +206,14 @@ ASMFLAGS += -DS120
 ASMFLAGS += -DSOFTDEVICE_PRESENT
 ASMFLAGS += -DBOARD_CUSTOM
 ASMFLAGS += -DSPI_MASTER_0_ENABLE
+
+# Test flags
+ifeq ("$(WATCHTEST)","1")
+C_SOURCE_FILES += ./components/tests.c
+CFLAGS += -DWATCHTEST
+ASMFLAGS += -DWATCHTEST
+endif
+
 #default target - first one defined
 default: clean nrf51422_xxac_s120
 

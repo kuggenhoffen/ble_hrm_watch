@@ -19,6 +19,7 @@
 #include "nordic_common.h"
 #include "nrf_sdm.h"
 #include "ble.h"
+#include "ble_gap.h"
 #include "ble_db_discovery.h"
 #include "softdevice_handler.h"
 #include "app_error.h"
@@ -26,7 +27,6 @@
 #include "nrf_gpio.h"
 #include "pstorage.h"
 #include "device_manager.h"
-#include "app_trace.h"
 #include "ble_hrs_c.h"
 #include "ble_bas_c.h"
 #include "app_util.h"
@@ -34,19 +34,20 @@
 #include "app_gpiote.h"
 #include "bsp.h"
 #include "app_uart.h"
-#include "u8g_arm.h"
+#include "hrm_app.h"
+#include "hrm_debug.h"
+#ifdef WATCHTEST
+#include "tests.h"
+#endif
 
-#define UART_TX_BUF_SIZE           512                                /**< UART TX buffer size. */
-#define UART_RX_BUF_SIZE           1                                  /**< UART RX buffer size. */
+#define UART_TX_BUF_SIZE           128                                /**< UART TX buffer size. */
+#define UART_RX_BUF_SIZE           64                                  /**< UART RX buffer size. */
 
-#define STRING_BUFFER_LEN          50
 #define BOND_DELETE_ALL_BUTTON_ID  0                                  /**< Button used for deleting all bonded centrals during startup. */
 
 #define APP_TIMER_PRESCALER        0                                  /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS       (6) 			         			  /**< Maximum number of simultaneously created timers. */
+#define APP_TIMER_MAX_TIMERS       (4) 			         			  /**< Maximum number of simultaneously created timers. */
 #define APP_TIMER_OP_QUEUE_SIZE    2                                  /**< Size of timer operation queues. */
-
-#define APPL_LOG                   app_trace_log                      /**< Debug logger macro that will be used in this file to do logging of debug information over UART. */
 
 #define SEC_PARAM_BOND             1                                  /**< Perform bonding. */
 #define SEC_PARAM_MITM             1                                  /**< Man In The Middle protection not required. */
@@ -101,6 +102,9 @@ static uint8_t                      m_scan_mode;                         /**< Sc
 
 static bool                         m_memory_access_in_progress = false; /**< Flag to keep track of ongoing operations on persistent memory. */
 
+// BLE HRM Application variables
+app_timer_id_t second_timer;
+
 /**
  * @brief Connection parameters requested for connection.
  */
@@ -112,108 +116,13 @@ static const ble_gap_conn_params_t m_connection_param =
     (uint16_t)SUPERVISION_TIMEOUT        // Supervision time-out
 };
 
-static void scan_start(void);
+void scan_start(void);
+void scan_end();
 
-#define APPL_LOG                        app_trace_log             /**< Debug logger macro that will be used in this file to do logging of debug information over UART. */
-
-/**
- * HRM Watch variables
- */
-
-// Graphics update timer
-app_timer_id_t gfxUpdateTimer;
-uint8_t	gfxUpdateReq = 0;
-uint8_t lastHeartRate = 0;
-uint8_t nextpage = 0;
-uint8_t hrtext[4];
-/*
-void gfxTimerHandler(void *p_ctx)
+void HardFault_Handler()
 {
-	// Check if we need to update display
-	if (!gfxUpdateReq)
-		return;
-
-	printf("update display\r\n");
-
-	// Clear display update request
-	gfxUpdateReq = 0;
-
-	u8g_FirstPage(&u8g);
-	do
-	{
-	//	drawDisplay();
-	} while( u8g_NextPage(&u8g) );
+	while (1) { ; }
 }
-
-
-typedef enum {
-	GFX_IDLE,
-	GFX_WAITING_NEXT,
-	GFX_WAITING_IDLE,
-	GFX_NEXT
-} e_gfxstate;
-
-e_gfxstate gfxState = GFX_IDLE;
-
-uint8_t gfxSerialNextPage()
-{
-	drawDisplay();
-	if (!u8g_NextPage(&u8g)) {
-		// No more pages to draw
-		printf("END\r\n");
-		return 0;
-	}
-	return 1;
-}
-
-void gfxSerialUpdate()
-{
-	uint8_t recvByte = 0;
-	switch (gfxState) {
-	case GFX_NEXT:
-		if (gfxSerialNextPage()) {
-			//printf("Wait TX for next");
-			gfxState = GFX_WAITING_NEXT;
-		}
-		else {
-			//printf("Wait TX for idle");
-			gfxState = GFX_WAITING_IDLE;
-		}
-		break;
-	case GFX_IDLE:
-		if (app_uart_get(&recvByte) == NRF_SUCCESS) {
-			if (recvByte == 'N') {
-				printf("START\r\n");
-				updateDisplayValues();
-				u8g_FirstPage(&u8g);
-				gfxState = GFX_NEXT;
-			}
-		}
-		break;
-	}
-}
-
-void updateDisplayValues()
-{
-	hrtext[0] = ' ';
-	hrtext[1] = ' ';
-	hrtext[2] = ' ';
-	hrtext[3] = 0;
-	uint8_t disphr = lastHeartRate;
-	if (disphr < 10) {
-		hrtext[2] = disphr + '0';
-	}
-	else if (disphr < 100) {
-		hrtext[0] = ' ';
-		hrtext[1] = disphr/10 + '0';
-		hrtext[2] = disphr%10 + '0';
-	}
-	else {
-		hrtext[0] = disphr/100 + '0';
-		hrtext[1] = (disphr%100)/10 + '0';
-		hrtext[2] = disphr%10 + '0';
-	}
-}*/
 
 /**@brief Function for asserts in the SoftDevice.
  *
@@ -235,18 +144,12 @@ void uart_error_handle(app_uart_evt_t * p_event)
 {
 	switch (p_event->evt_type) {
 	case APP_UART_COMMUNICATION_ERROR:
-		printf("uart comm error");
-		APP_ERROR_HANDLER(p_event->data.error_communication);
+		//APP_ERROR_HANDLER(p_event->data.error_communication);
 		break;
 	case APP_UART_FIFO_ERROR:
-		printf("uart fifo error");
 		APP_ERROR_HANDLER(p_event->data.error_code);
 		break;
 	case APP_UART_TX_EMPTY:
-	/*	if (gfxState == GFX_WAITING_IDLE)
-			gfxState = GFX_IDLE;
-		else if (gfxState == GFX_WAITING_NEXT)
-			gfxState = GFX_NEXT;*/
 		break;
 	default:
 		break;
@@ -273,14 +176,14 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
     {
         case DM_EVT_CONNECTION:
         {
-            APPL_LOG("[APPL]: >> DM_EVT_CONNECTION\r\n");
+            //APPL_LOG("[APPL]: >> DM_EVT_CONNECTION\r\n");
 #ifdef ENABLE_DEBUG_LOG_SUPPORT
             ble_gap_addr_t * peer_addr;
             peer_addr = &p_event->event_param.p_gap_param->params.connected.peer_addr;
-#endif // ENABLE_DEBUG_LOG_SUPPORT
             APPL_LOG("[APPL]:[%02X %02X %02X %02X %02X %02X]: Connection Established\r\n",
                                 peer_addr->addr[0], peer_addr->addr[1], peer_addr->addr[2],
                                 peer_addr->addr[3], peer_addr->addr[4], peer_addr->addr[5]);
+#endif // ENABLE_DEBUG_LOG_SUPPORT
             
             m_dm_device_handle = (*p_handle);
 
@@ -295,13 +198,13 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
             {
                 scan_start();
             }
-            APPL_LOG("[APPL]: << DM_EVT_CONNECTION\r\n");
+            //APPL_LOG("[APPL]: << DM_EVT_CONNECTION\r\n");
             break;
         }
 
         case DM_EVT_DISCONNECTION:
         {
-            APPL_LOG("[APPL]: >> DM_EVT_DISCONNECTION\r\n");
+            //APPL_LOG("[APPL]: >> DM_EVT_DISCONNECTION\r\n");
             memset(&m_ble_db_discovery, 0 , sizeof (m_ble_db_discovery));
 
             if (m_peer_count == MAX_PEER_COUNT)
@@ -309,52 +212,52 @@ static api_result_t device_manager_event_handler(const dm_handle_t    * p_handle
                 scan_start();
             }
             m_peer_count--;
-            APPL_LOG("[APPL]: << DM_EVT_DISCONNECTION\r\n");
+            //APPL_LOG("[APPL]: << DM_EVT_DISCONNECTION\r\n");
             break;
         }
 
         case DM_EVT_SECURITY_SETUP:
         {
-            APPL_LOG("[APPL]:[0x%02X] >> DM_EVT_SECURITY_SETUP\r\n", p_handle->connection_id);
+            //APPL_LOG("[APPL]:[0x%02X] >> DM_EVT_SECURITY_SETUP\r\n", p_handle->connection_id);
             // Slave securtiy request received from peer, if from a non bonded device, 
             // initiate security setup, else, wait for encryption to complete.
             err_code = dm_security_setup_req(&m_dm_device_handle);
             APP_ERROR_CHECK(err_code);
-            APPL_LOG("[APPL]:[0x%02X] << DM_EVT_SECURITY_SETUP\r\n", p_handle->connection_id);
+            //APPL_LOG("[APPL]:[0x%02X] << DM_EVT_SECURITY_SETUP\r\n", p_handle->connection_id);
             break;
         }
 
         case DM_EVT_SECURITY_SETUP_COMPLETE:
         {
-            APPL_LOG("[APPL]: >> DM_EVT_SECURITY_SETUP_COMPLETE\r\n");
+            //APPL_LOG("[APPL]: >> DM_EVT_SECURITY_SETUP_COMPLETE\r\n");
             // Heart rate service discovered. Enable notification of Heart Rate Measurement.
             err_code = ble_hrs_c_hrm_notif_enable(&m_ble_hrs_c);
             APP_ERROR_CHECK(err_code);
-            APPL_LOG("[APPL]: << DM_EVT_SECURITY_SETUP_COMPLETE\r\n");
+            //APPL_LOG("[APPL]: << DM_EVT_SECURITY_SETUP_COMPLETE\r\n");
             break;
         }
 
         case DM_EVT_LINK_SECURED:
-            APPL_LOG("[APPL]: >> DM_LINK_SECURED_IND\r\n");
-            APPL_LOG("[APPL]: << DM_LINK_SECURED_IND\r\n");
+            //APPL_LOG("[APPL]: >> DM_LINK_SECURED_IND\r\n");
+            //APPL_LOG("[APPL]: << DM_LINK_SECURED_IND\r\n");
             break;
 
         case DM_EVT_DEVICE_CONTEXT_LOADED:
-            APPL_LOG("[APPL]: >> DM_EVT_LINK_SECURED\r\n");
+            //APPL_LOG("[APPL]: >> DM_EVT_LINK_SECURED\r\n");
             APP_ERROR_CHECK(event_result);
-            APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_LOADED\r\n");
+            //APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_LOADED\r\n");
             break;
 
         case DM_EVT_DEVICE_CONTEXT_STORED:
-            APPL_LOG("[APPL]: >> DM_EVT_DEVICE_CONTEXT_STORED\r\n");
+            //APPL_LOG("[APPL]: >> DM_EVT_DEVICE_CONTEXT_STORED\r\n");
             APP_ERROR_CHECK(event_result);
-            APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_STORED\r\n");
+            //APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_STORED\r\n");
             break;
 
         case DM_EVT_DEVICE_CONTEXT_DELETED:
-            APPL_LOG("[APPL]: >> DM_EVT_DEVICE_CONTEXT_DELETED\r\n");
+            //APPL_LOG("[APPL]: >> DM_EVT_DEVICE_CONTEXT_DELETED\r\n");
             APP_ERROR_CHECK(event_result);
-            APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_DELETED\r\n");
+            //APPL_LOG("[APPL]: << DM_EVT_DEVICE_CONTEXT_DELETED\r\n");
             break;
 
         default:
@@ -421,6 +324,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             adv_data.p_data = (uint8_t *)p_gap_evt->params.adv_report.data;
             adv_data.data_len = p_gap_evt->params.adv_report.dlen;
 
+            //app_add_ble_scan_result(p_gap_evt->params.adv_report.peer_addr.addr);
+
             err_code = adv_report_parse(BLE_GAP_AD_TYPE_16BIT_SERVICE_UUID_MORE_AVAILABLE,
                                         &adv_data,
                                         &type_data);
@@ -444,7 +349,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                 {
                     UUID16_EXTRACT(&extracted_uuid,&type_data.p_data[u_index * UUID16_SIZE]);
 
-                    APPL_LOG("\t[APPL]: %x\r\n",extracted_uuid);
+                    //APPL_LOG("\t[APPL]: %x\r\n",extracted_uuid);
 
                     if(extracted_uuid == TARGET_UUID)
                     {
@@ -453,7 +358,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
                         if (err_code != NRF_SUCCESS)
                         {
-                            APPL_LOG("[APPL]: Scan stop failed, reason %d\r\n", err_code);
+                            //APPL_LOG("[APPL]: Scan stop failed, reason %d\r\n", err_code);
                         }
 
                         m_scan_param.selective = 0; 
@@ -466,7 +371,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
                         if (err_code != NRF_SUCCESS)
                         {
-                            APPL_LOG("[APPL]: Connection Request Failed, reason %d\r\n", err_code);
+                            //APPL_LOG("[APPL]: Connection Request Failed, reason %d\r\n", err_code);
                         }
                         break;
                     }
@@ -478,7 +383,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         case BLE_GAP_EVT_TIMEOUT:
             if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
             {
-                APPL_LOG("[APPL]: Scan timed out.\r\n");
+                //APPL_LOG("[APPL]: Scan timed out.\r\n");
                 if (m_scan_mode ==  BLE_WHITELIST_SCAN)
                 {
                     m_scan_mode = BLE_FAST_SCAN;
@@ -490,7 +395,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             else if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN)
             {
             	// Reset
-                APPL_LOG("[APPL]: Connection Request timed out.\r\n");
+                //APPL_LOG("[APPL]: Connection Request timed out.\r\n");
             }
             break;
 
@@ -501,6 +406,18 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             APP_ERROR_CHECK(err_code);
             break;
 
+        case BLE_GAP_EVT_CONNECTED:
+        	// Connection successful, request RSSI updates
+        	app_ble_connected();
+            err_code = sd_ble_gap_rssi_start(p_gap_evt->conn_handle, 2, 50);
+            APP_ERROR_CHECK(err_code);
+            break;
+        case BLE_GAP_EVT_DISCONNECTED:
+        	app_ble_disconnected();
+        	break;
+        case BLE_GAP_EVT_RSSI_CHANGED:
+        	app_update_rssi(p_gap_evt->params.rssi_changed.rssi);
+        	break;
         default:
             break;
     }
@@ -571,9 +488,14 @@ static void sys_evt_dispatch(uint32_t sys_evt)
 static void ble_stack_init(void)
 {
     uint32_t err_code;
+    ble_gap_enable_params_t ble_enable_params;
 
     // Initialize the SoftDevice handler module.
     SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_XTAL_20_PPM, false);
+
+    // Enable BLE with central role
+    ble_enable_params.role = BLE_GAP_ROLE_CENTRAL;
+    sd_ble_enable(&ble_enable_params);
 
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
@@ -633,9 +555,8 @@ static void device_manager_init(void)
  */
 static void power_manage(void)
 {
-    //uint32_t err_code = sd_app_evt_wait();
-
-    //APP_ERROR_CHECK(err_code);
+    uint32_t err_code = sd_app_evt_wait();
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -656,18 +577,15 @@ static void hrs_c_evt_handler(ble_hrs_c_t * p_hrs_c, ble_hrs_c_evt_t * p_hrs_c_e
             err_code = ble_hrs_c_hrm_notif_enable(p_hrs_c);
             APP_ERROR_CHECK(err_code);
 
-            printf("Heart rate service discovered \r\n");
+            //DEBUG_LOG("Heart rate service discovered \r\n");
             break;
 
         case BLE_HRS_C_EVT_HRM_NOTIFICATION:
         {
-            APPL_LOG("[APPL]: HR Measurement received %d \r\n", p_hrs_c_evt->params.hrm.hr_value);
+            //APPL_LOG("[APPL]: HR Measurement received %d \r\n", p_hrs_c_evt->params.hrm.hr_value);
 
-            printf("Heart Rate = %d\r\n", p_hrs_c_evt->params.hrm.hr_value);
-            if (p_hrs_c_evt->params.hrm.hr_value != lastHeartRate) {
-            	lastHeartRate = p_hrs_c_evt->params.hrm.hr_value;
-            	gfxUpdateReq = 1;
-            }
+            //DEBUG_LOG("Heart Rate = %d\r\n", p_hrs_c_evt->params.hrm.hr_value);
+            app_update_heartrate(p_hrs_c_evt->params.hrm.hr_value);
             break;
         }
 
@@ -687,16 +605,16 @@ static void bas_c_evt_handler(ble_bas_c_t * p_bas_c, ble_bas_c_evt_t * p_bas_c_e
     {
         case BLE_BAS_C_EVT_DISCOVERY_COMPLETE:
             // Batttery service discovered. Enable notification of Battery Level.
-        	printf("Battery discovered\r\n");
+        	/*DEBUG_LOG("Battery discovered\r\n");
             APPL_LOG("[APPL]: Battery Service discovered. \r\n");
 
-            APPL_LOG("[APPL]: Reading battery level. \r\n");
+            APPL_LOG("[APPL]: Reading battery level. \r\n");*/
 
             err_code = ble_bas_c_bl_read(p_bas_c);
             APP_ERROR_CHECK(err_code);
 
 
-            APPL_LOG("[APPL]: Enabling Battery Level Notification. \r\n");
+            //APPL_LOG("[APPL]: Enabling Battery Level Notification. \r\n");
             err_code = ble_bas_c_bl_notif_enable(p_bas_c);
             APP_ERROR_CHECK(err_code);
 
@@ -704,17 +622,16 @@ static void bas_c_evt_handler(ble_bas_c_t * p_bas_c, ble_bas_c_evt_t * p_bas_c_e
 
         case BLE_BAS_C_EVT_BATT_NOTIFICATION:
         {
-            APPL_LOG("[APPL]: Battery Level received %d %%\r\n", p_bas_c_evt->params.battery_level);
+            //APPL_LOG("[APPL]: Battery Level received %d %%\r\n", p_bas_c_evt->params.battery_level);
 
-            printf("Battery = %d %%\r\n", p_bas_c_evt->params.battery_level);
+            //DEBUG_LOG("Battery = %d %%\r\n", p_bas_c_evt->params.battery_level);
+            app_update_hrm_battery(p_bas_c_evt->params.battery_level);
             break;
         }
 
         case BLE_BAS_C_EVT_BATT_READ_RESP:
         {
-            APPL_LOG("[APPL]: Battery Level Read as %d %%\r\n", p_bas_c_evt->params.battery_level);
-
-            printf("Battery = %d %%\r\n", p_bas_c_evt->params.battery_level);
+            //APPL_LOG("[APPL]: Battery Level Read as %d %%\r\n", p_bas_c_evt->params.battery_level);
             break;
         }
 
@@ -765,14 +682,14 @@ static void db_discovery_init(void)
 
 /**@breif Function to start scanning.
  */
-static void scan_start(void)
+void scan_start(void)
 {
     ble_gap_whitelist_t   whitelist;
     ble_gap_addr_t      * p_whitelist_addr[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
     ble_gap_irk_t       * p_whitelist_irk[BLE_GAP_WHITELIST_IRK_MAX_COUNT];
     uint32_t              err_code;
     uint32_t              count;
-    printf("scan start");
+    //DEBUG_LOG("scan start");
     // Verify if there is any flash access pending, if yes delay starting scanning until 
     // it's complete.
     err_code = pstorage_access_status_get(&count);
@@ -797,7 +714,6 @@ static void scan_start(void)
     if (((whitelist.addr_count == 0) && (whitelist.irk_count == 0)) ||
          (m_scan_mode != BLE_WHITELIST_SCAN))
     {
-    	printf("no whitelist");
         // No devices in whitelist, hence non selective performed.
         m_scan_param.active       = 0;            // Active scanning set.
         m_scan_param.selective    = 0;            // Selective scanning not set.
@@ -825,64 +741,36 @@ static void scan_start(void)
     APP_ERROR_CHECK(err_code);
 }
 
+void scan_end()
+{
+	uint32_t err_code = sd_ble_gap_scan_stop();
+	APP_ERROR_CHECK(err_code);
+}
+
 static void bsp_event_handler(bsp_event_t bsp_event)
 {
-	;
-}
-
-static void board_init()
-{
-
-}
-app_timer_id_t testi;
-uint32_t janna = 0;
-uint8_t adcdone = 0;
-volatile uint16_t timer = 0;
-volatile uint8_t updatedisplay = 0;
-void testitimeri(void *p_ctx)
-{
-	//printf("2 sekkaa\r\n");
-	//gfxUpdateReq = 1;
-	//gfxTimerHandler(NULL);
-	/* Enable ADC*/
-	//NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
-	printf("ADC: %d\r\n", janna);
-	if (adcdone) {
-		adcdone = 0;
-		NRF_ADC->TASKS_START = 1;
+	switch (bsp_event) {
+	case BSP_EVENT_KEY_0:
+		app_button_callback(HRM_BUTTON_BOTTOM_RIGHT);
+		break;
+	case BSP_EVENT_KEY_1:
+		app_button_callback(HRM_BUTTON_BOTTOM_LEFT);
+		break;
+	case BSP_EVENT_KEY_2:
+		app_button_callback(HRM_BUTTON_TOP_RIGHT);
+		break;
+	case BSP_EVENT_KEY_3:
+		app_button_callback(HRM_BUTTON_TOP_LEFT);
+		break;
+	default:
+		break;
 	}
-	timer += 2;
-	updatedisplay = 1;
-    printf("DD\r\n");
 }
 
-
-void ADC_init(void)
+void second_timer_handler(void *p_ctx)
 {
-	/* Enable interrupt on ADC sample ready event*/
-	NRF_ADC->INTENSET = ADC_INTENSET_END_Msk;
-	NVIC_EnableIRQ(ADC_IRQn);
-
-	// config ADC
-	NRF_ADC->CONFIG	= (ADC_CONFIG_EXTREFSEL_None << ADC_CONFIG_EXTREFSEL_Pos) 								/* Bits 17..16 : ADC external reference pin selection. */
-										| (ADC_CONFIG_PSEL_AnalogInput2 << ADC_CONFIG_PSEL_Pos)									/*!< Use analog input 6 as analog input (P0.05). */
-										| (ADC_CONFIG_REFSEL_VBG << ADC_CONFIG_REFSEL_Pos)											/*!< Use internal 1.2V bandgap voltage as reference for conversion. */
-										| (ADC_CONFIG_INPSEL_AnalogInputNoPrescaling << ADC_CONFIG_INPSEL_Pos) 	/*!< Analog input specified by PSEL with no prescaling used as input for the conversion. */
-										| (ADC_CONFIG_RES_10bit << ADC_CONFIG_RES_Pos);													/*!< 8bit ADC resolution. */
-
-
-	/* Enable ADC*/
-	NRF_ADC->ENABLE = ADC_ENABLE_ENABLE_Enabled;
-	NRF_ADC->TASKS_START = 1;
-}
-
-/* Interrupt handler for ADC data ready event. It will be executed when ADC sampling is complete */
-void ADC_IRQHandler(void)
-{
-	/* Clear dataready event */
-	NRF_ADC->EVENTS_END = 0;
-	janna = NRF_ADC->RESULT;
-	adcdone = 1;
+	app_sec_tick();
+	//printf("tick\r\n");
 }
 
 int main(void)
@@ -896,12 +784,12 @@ int main(void)
            TX_PIN_NUMBER,
            RTS_PIN_NUMBER,
            CTS_PIN_NUMBER,
-           APP_UART_FLOW_CONTROL_DISABLED,
+           APP_UART_FLOW_CONTROL_ENABLED,
            false,
            UART_BAUDRATE_BAUDRATE_Baud460800
        };
 
-    /*APP_UART_FIFO_INIT(&comm_params,
+    APP_UART_FIFO_INIT(&comm_params,
                           UART_RX_BUF_SIZE,
                           UART_TX_BUF_SIZE,
                           uart_error_handle,
@@ -909,46 +797,51 @@ int main(void)
                           err_code);
 
     APP_ERROR_CHECK(err_code);
-    app_trace_init();*/
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
     APP_GPIOTE_INIT(1);
 
-    err_code = bsp_init(BSP_INIT_BUTTONS, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),NULL);
+#ifdef WATCHTEST
+    err_code = bsp_init(BSP_INIT_BUTTONS, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),test_event_handler);
     APP_ERROR_CHECK(err_code);
 
-    printf("Heart rate collector example\r\n");
+    ble_stack_init();
+    device_manager_init();
+    db_discovery_init();
+
+    run_tests();
+    for (;; ) { ; }
+#endif
+
+    err_code = bsp_init(BSP_INIT_BUTTONS, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),bsp_event_handler);
+	APP_ERROR_CHECK(err_code);
+
     ble_stack_init();
     device_manager_init();
     db_discovery_init();
     hrs_c_init();
     bas_c_init();
-    ADC_init();
-    printf("Init done\r\n");
-    // Init U8GLib
-    //u8g_Init(&u8g, &u8g_dev_stdout);
-    u8g_InitComFn(&u8g, &u8g_dev_ssd1351_128x128gh_332_hw_spi, u8g_com_hw_spi_fn);
-    display_init();
-    //u8g_SetDefaultForegroundColor(&u8g);
-    //nrf_delay_ms(125);
-    //nrf_gpio_pin_set(DISPLAY_EN);
-    app_timer_create(&testi, APP_TIMER_MODE_REPEATED, &testitimeri);
-    app_timer_start(testi, APP_TIMER_TICKS(2000, APP_TIMER_PRESCALER), NULL);
+    app_init();
 
+    // Initialize 1 second timer
+    app_timer_create(&second_timer, APP_TIMER_MODE_REPEATED, &second_timer_handler);
+    app_timer_start(second_timer, APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER), NULL);
 
-    display_test();
     // Start scanning for peripherals and initiate connection
     // with devices that advertise Heart Rate UUID.
     scan_start();
 
+    app_uart_connection_state_t uart_state;
+    app_uart_get_connection_state(&uart_state);
     for (;; )
     {
         //power_manage();
-        //gfxSerialUpdate();
-        if (updatedisplay) {
-        	update_values(lastHeartRate, timer);
-			display_test();
-			updatedisplay = 0;
-        }
+    	app_loop();
+    	// Check if uart connected
+    	app_uart_get_connection_state(&uart_state);
+    	if (uart_state == APP_UART_DISCONNECTED) {
+    		// Sleep if uart not connected
+    		power_manage();
+    	}
     }
 }
 
